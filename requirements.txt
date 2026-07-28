@@ -1,0 +1,2 @@
+textual>=7.5,<8
+openai>=2,<3

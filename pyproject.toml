@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lunar-arcana-tui"
+version = "0.2.0"
+description = "A focused 78-card tarot reading TUI."
+requires-python = ">=3.11"
+dependencies = ["textual>=7.5,<8", "openai>=2,<3"]
+
+[project.scripts]
+lunar-arcana = "tarot_tui.app:main"
+
+[tool.setuptools.packages.find]
+include = ["tarot_tui*"]
