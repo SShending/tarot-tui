@@ -12,6 +12,7 @@ from .interpretation import (
     LocalInterpreter,
     ReadingReport,
     build_interpreter_from_env,
+    build_interpreter_from_prompt,
 )
 
 
@@ -37,7 +38,7 @@ class LunarArcanaApp(App[None]):
     }
 
     #brand {
-        color: #da7756;
+        color: #a984bc;
         text-style: bold;
     }
 
@@ -69,7 +70,7 @@ class LunarArcanaApp(App[None]):
     }
 
     Input:focus {
-        border: solid #da7756;
+        border: solid #76558b;
     }
 
     Button {
@@ -77,13 +78,13 @@ class LunarArcanaApp(App[None]):
         height: 3;
         margin-top: 1;
         border: none;
-        background: #382a24;
-        color: #e6a089;
+        background: #34283b;
+        color: #c1a5cf;
     }
 
     Button:hover, Button:focus {
-        background: #da7756;
-        color: #181715;
+        background: #674879;
+        color: #f4eef7;
         text-style: bold;
     }
 
@@ -114,22 +115,22 @@ class LunarArcanaApp(App[None]):
         margin: 0 1;
         padding: 1;
         content-align: center middle;
-        border: tall #514c45;
+        border: solid #514c45;
         background: #1f1d1a;
         color: #aaa49a;
         text-style: none;
     }
 
     Button.tarot-card:hover, Button.tarot-card:focus {
-        border: tall #da7756;
-        background: #28231f;
+        border: solid #76558b;
+        background: #29232e;
         color: #f0e8df;
         text-style: bold;
     }
 
     Button.tarot-card.shuffle-pulse {
-        border: tall #b85f43;
-        background: #2d241f;
+        border: solid #674879;
+        background: #2d2532;
     }
 
     Button.tarot-card.upright {
@@ -138,7 +139,7 @@ class LunarArcanaApp(App[None]):
 
     Button.tarot-card.reversed {
         color: #d68b7b;
-        border: tall #854d40;
+        border: solid #854d40;
     }
 
     #actions {
@@ -156,9 +157,38 @@ class LunarArcanaApp(App[None]):
         height: auto;
         margin-top: 1;
         padding: 0 2;
-        border-left: thick #da7756;
+        border-left: thick #76558b;
         background: #181715;
         overflow: hidden hidden;
+    }
+
+    #follow-up {
+        width: 100%;
+        height: auto;
+        margin-top: 1;
+        padding-top: 1;
+        border-top: solid #514c45;
+    }
+
+    #follow-up-label {
+        color: #c9b8aa;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+
+    #follow-up-controls {
+        width: 100%;
+        height: 3;
+    }
+
+    #follow-up-question {
+        width: 1fr;
+    }
+
+    #send-follow-up {
+        width: 12;
+        min-width: 12;
+        margin: 0 0 0 1;
     }
 
     Markdown {
@@ -168,7 +198,7 @@ class LunarArcanaApp(App[None]):
     }
 
     MarkdownH2 {
-        color: #e18a6c;
+        color: #b895ca;
         text-style: bold;
         margin-top: 1;
     }
@@ -180,6 +210,16 @@ class LunarArcanaApp(App[None]):
     Footer {
         background: #1f1d1a;
         color: #8c877f;
+    }
+
+    .footer-key--key {
+        background: #1f1d1a;
+        color: #b895ca;
+    }
+
+    .footer-key--description {
+        background: #1f1d1a;
+        color: #d8d3ca;
     }
 
     .hidden {
@@ -213,6 +253,9 @@ class LunarArcanaApp(App[None]):
         self.shuffle_count = 0
         self._shuffling = False
         self._question = ""
+        self._report_markdown = ""
+        self._follow_up_transcript: list[tuple[str, str]] = []
+        self._reading_session = 0
         try:
             self.interpreter = interpreter or build_interpreter_from_env()
         except Exception:
@@ -245,6 +288,14 @@ class LunarArcanaApp(App[None]):
                 yield Button("揭示解读", id="interpret", classes="hidden")
             with Vertical(id="result", classes="hidden"):
                 yield Markdown("", id="report")
+                with Vertical(id="follow-up", classes="hidden"):
+                    yield Static("继续追问", id="follow-up-label")
+                    with Horizontal(id="follow-up-controls"):
+                        yield Input(
+                            placeholder="对解读有疑惑？继续问…",
+                            id="follow-up-question",
+                        )
+                        yield Button("发送", id="send-follow-up")
             yield Button("开始新的占卜", id="new-reading", classes="hidden")
 
         yield Footer()
@@ -287,20 +338,35 @@ class LunarArcanaApp(App[None]):
         )
         self._generate_report()
 
+    @on(Input.Submitted, "#follow-up-question")
+    def submit_follow_up(self, event: Input.Submitted) -> None:
+        self._start_follow_up(event.value)
+
+    @on(Button.Pressed, "#send-follow-up")
+    def send_follow_up_pressed(self) -> None:
+        self._start_follow_up(self.query_one("#follow-up-question", Input).value)
+
     @on(Button.Pressed, "#new-reading")
     def new_reading_pressed(self) -> None:
         self.action_new_reading()
 
     def action_new_reading(self) -> None:
+        self._reading_session += 1
         self.reading = None
         self.revealed = 0
         self.shuffle_count = 0
         self._shuffling = False
         self._question = ""
+        self._report_markdown = ""
+        self._follow_up_transcript.clear()
+        self.interpreter.reset_conversation()
         self.query_one("#reading-panel").add_class("hidden")
         self.query_one("#question-panel").remove_class("hidden")
+        self.query_one("#follow-up").add_class("hidden")
+        self._restore_follow_up_controls()
         question = self.query_one("#question", Input)
         question.value = ""
+        self.query_one("#follow-up-question", Input).value = ""
         self.call_after_refresh(self._focus_question_input)
 
     def _focus_question_input(self) -> None:
@@ -316,14 +382,21 @@ class LunarArcanaApp(App[None]):
             return
 
         self._question = question
+        self._reading_session += 1
         self.reading = None
         self.revealed = 0
         self.shuffle_count = 0
+        self._report_markdown = ""
+        self._follow_up_transcript.clear()
+        self.interpreter.reset_conversation()
         self.query_one("#question-panel").add_class("hidden")
         self.query_one("#reading-panel").remove_class("hidden")
         self.query_one("#result").add_class("hidden")
         self.query_one("#new-reading").add_class("hidden")
         self.query_one("#interpret").add_class("hidden")
+        self.query_one("#follow-up").add_class("hidden")
+        self._restore_follow_up_controls()
+        self.query_one("#follow-up-question", Input).value = ""
         self.query_one("#question-echo", Static).update(f"› {question}")
         self._shuffle_cards()
 
@@ -419,14 +492,21 @@ class LunarArcanaApp(App[None]):
         self.call_from_thread(self._display_report, report, used_fallback)
 
     def _display_report(self, report: ReadingReport, used_fallback: bool) -> None:
-        self.query_one("#report", Markdown).update(report.markdown)
+        self._report_markdown = report.markdown
+        self._follow_up_transcript.clear()
+        self._render_report()
         result = self.query_one("#result")
         result.remove_class("hidden")
         interpret = self.query_one("#interpret", Button)
         interpret.add_class("hidden")
         new_button = self.query_one("#new-reading", Button)
         new_button.remove_class("hidden")
-        new_button.focus()
+        can_follow_up = (
+            self.interpreter.supports_follow_up
+            and not used_fallback
+            and not report.blocked
+        )
+        self.query_one("#follow-up").set_class(not can_follow_up, "hidden")
         if used_fallback:
             self.query_one("#ritual-status", Static).update(
                 "大模型连接失败 · 本次已自动切换到本地解读"
@@ -435,7 +515,93 @@ class LunarArcanaApp(App[None]):
             self.query_one("#ritual-status", Static).update(
                 "解读完成 · 牌面描述趋势，不决定未来"
             )
+        if can_follow_up:
+            self.call_after_refresh(self._focus_follow_up_input)
+        else:
+            new_button.focus()
         self.call_after_refresh(lambda: result.scroll_visible(animate=True))
+
+    def _start_follow_up(self, question: str) -> None:
+        question = question.strip()
+        if not question:
+            self.notify("请先输入你的疑问", severity="warning")
+            self.call_after_refresh(self._focus_follow_up_input)
+            return
+        if not self.interpreter.supports_follow_up:
+            self.notify("当前解读模式不支持继续追问", severity="warning")
+            return
+
+        follow_up_input = self.query_one("#follow-up-question", Input)
+        send_button = self.query_one("#send-follow-up", Button)
+        follow_up_input.disabled = True
+        send_button.disabled = True
+        send_button.label = "回应中..."
+        self.query_one("#ritual-status", Static).update(
+            f"{self.interpreter.label} · 正在回应追问"
+        )
+        self._generate_follow_up(question, self._reading_session)
+
+    @work(thread=True, exclusive=True, group="follow-up")
+    def _generate_follow_up(self, question: str, session: int) -> None:
+        try:
+            report = self.interpreter.follow_up(question)
+        except Exception:
+            self.call_from_thread(self._follow_up_failed, session)
+            return
+        self.call_from_thread(self._display_follow_up, session, question, report)
+
+    def _display_follow_up(
+        self,
+        session: int,
+        question: str,
+        report: ReadingReport,
+    ) -> None:
+        if session != self._reading_session:
+            return
+        self._follow_up_transcript.append((question, report.markdown))
+        self._render_report()
+        follow_up_input = self.query_one("#follow-up-question", Input)
+        follow_up_input.value = ""
+        self._restore_follow_up_controls()
+        self.query_one("#ritual-status", Static).update(
+            "追问已回应 · 你可以继续询问或开始新的占卜"
+        )
+        self.call_after_refresh(self._focus_follow_up_input)
+        self.call_after_refresh(
+            lambda: self.query_one("#follow-up").scroll_visible(animate=True)
+        )
+
+    def _follow_up_failed(self, session: int) -> None:
+        if session != self._reading_session:
+            return
+        self._restore_follow_up_controls()
+        self.query_one("#ritual-status", Static).update(
+            "追问连接失败 · 请检查模型服务后重试"
+        )
+        self.notify("大模型没有完成这次回应", severity="error")
+        self.call_after_refresh(self._focus_follow_up_input)
+
+    def _restore_follow_up_controls(self) -> None:
+        follow_up_input = self.query_one("#follow-up-question", Input)
+        send_button = self.query_one("#send-follow-up", Button)
+        follow_up_input.disabled = False
+        send_button.disabled = False
+        send_button.label = "发送"
+
+    def _focus_follow_up_input(self) -> None:
+        self.query_one("#follow-up-question", Input).focus()
+
+    def _render_report(self) -> None:
+        sections = [self._report_markdown]
+        for question, answer in self._follow_up_transcript:
+            quoted_question = "\n".join(
+                f"> {line}" for line in question.splitlines() or [question]
+            )
+            sections.append(
+                f"---\n\n### 你的追问\n\n{quoted_question}\n\n"
+                f"### 解读回应\n\n{answer}"
+            )
+        self.query_one("#report", Markdown).update("\n\n".join(sections))
 
     def _set_card_layout(self, width: int) -> None:
         cards = self.query_one("#cards")
@@ -454,7 +620,7 @@ class LunarArcanaApp(App[None]):
 
 
 def main() -> None:
-    LunarArcanaApp().run()
+    LunarArcanaApp(build_interpreter_from_prompt()).run()
 
 
 if __name__ == "__main__":

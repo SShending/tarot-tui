@@ -8,6 +8,7 @@ from tarot_tui.interpretation import (
     LocalInterpreter,
     OpenAIInterpreter,
     build_interpreter_from_env,
+    build_interpreter_from_prompt,
 )
 
 
@@ -66,6 +67,52 @@ class InterpretationTests(unittest.TestCase):
 
         self.assertIsInstance(interpreter, LocalInterpreter)
 
+    def test_prompt_uses_local_interpreter_when_key_is_skipped(self) -> None:
+        secret_prompts = []
+
+        interpreter = build_interpreter_from_prompt(
+            {},
+            input_fn=lambda prompt: "",
+            secret_input_fn=secret_prompts.append,
+        )
+
+        self.assertIsInstance(interpreter, LocalInterpreter)
+        self.assertEqual([], secret_prompts)
+
+    def test_prompt_passes_model_settings_to_openai_interpreter(self) -> None:
+        answers = iter(["https://example.test/v1", "2", "5"])
+        factory_calls = []
+
+        class FakeModels:
+            def list(self):
+                return SimpleNamespace(
+                    data=[
+                        SimpleNamespace(id="custom-basic"),
+                        SimpleNamespace(id="custom-reasoning"),
+                    ]
+                )
+
+        client = SimpleNamespace(models=FakeModels())
+
+        def client_factory(**kwargs):
+            factory_calls.append(kwargs)
+            return client
+
+        interpreter = build_interpreter_from_prompt(
+            {},
+            input_fn=lambda prompt: next(answers),
+            secret_input_fn=lambda prompt: "test-key",
+            client_factory=client_factory,
+        )
+
+        self.assertIsInstance(interpreter, OpenAIInterpreter)
+        self.assertEqual("custom-reasoning", interpreter.model)
+        self.assertEqual("high", interpreter.reasoning_effort)
+        self.assertEqual(
+            [{"api_key": "test-key", "base_url": "https://example.test/v1"}],
+            factory_calls,
+        )
+
     def test_openai_interpreter_sends_question_and_fixed_cards(self) -> None:
         calls = []
 
@@ -82,11 +129,54 @@ class InterpretationTests(unittest.TestCase):
 
         self.assertIn("针对问题", report.markdown)
         self.assertEqual("test-model", calls[0]["model"])
+        self.assertEqual({"effort": "medium"}, calls[0]["reasoning"])
         self.assertFalse(calls[0]["store"])
-        self.assertIn(reading.question, calls[0]["input"])
+        initial_input = calls[0]["input"][0]["content"]
+        self.assertIn(reading.question, initial_input)
         for drawn in reading.cards:
-            self.assertIn(drawn.card.name, calls[0]["input"])
-            self.assertIn(drawn.card.family, calls[0]["input"])
+            self.assertIn(drawn.card.name, initial_input)
+            self.assertIn(drawn.card.family, initial_input)
+
+    def test_openai_interpreter_replays_full_output_for_follow_up(self) -> None:
+        calls = []
+        initial_output = {"type": "message", "id": "initial-output"}
+        follow_up_output = {"type": "message", "id": "follow-up-output"}
+        responses = iter(
+            [
+                SimpleNamespace(
+                    output_text="## 直接回答\n\n初次解读。",
+                    output=[initial_output],
+                ),
+                SimpleNamespace(
+                    output_text="追问回应。",
+                    output=[follow_up_output],
+                ),
+            ]
+        )
+
+        class FakeResponses:
+            def create(self, **kwargs):
+                calls.append(kwargs)
+                return next(responses)
+
+        interpreter = OpenAIInterpreter(
+            client=SimpleNamespace(responses=FakeResponses()),
+            model="test-model",
+        )
+        reading = draw_reading("我该怎样推进当前计划？", random.Random(13))
+
+        interpreter.interpret(reading)
+        report = interpreter.follow_up("趋势牌为什么不是确定结果？")
+
+        self.assertEqual("追问回应。", report.markdown)
+        self.assertEqual(initial_output, calls[1]["input"][1])
+        self.assertIn("趋势牌为什么不是确定结果", calls[1]["input"][2]["content"])
+        self.assertFalse(calls[1]["store"])
+        self.assertEqual(1100, calls[1]["max_output_tokens"])
+
+        interpreter.reset_conversation()
+        with self.assertRaisesRegex(RuntimeError, "先生成初次解读"):
+            interpreter.follow_up("还能继续吗？")
 
 
 if __name__ == "__main__":
