@@ -31,6 +31,17 @@ lunar-arcana
 
 推荐使用至少 `80 x 32` 的终端窗口。较窄的终端会自动将三张牌改为纵向排列。
 
+## 从 Release 安装
+
+从 [GitHub Releases](https://github.com/SShending/tarot-tui/releases) 下载 `.whl` 文件，然后使用 `pipx` 安装：
+
+```bash
+pipx install ./lunar_arcana_tui-0.2.0-py3-none-any.whl
+lunar-arcana
+```
+
+每个 `v*` 标签会自动生成跨平台 Wheel 和源码包，并上传到对应的 GitHub Release。
+
 ## 操作
 
 - 输入问题后按 `Enter` 进入牌阵
