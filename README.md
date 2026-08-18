@@ -12,7 +12,15 @@
 
 ![月影神谕三牌揭示界面](docs/reading-preview.png)
 
-预览由当前 TUI 在 `100 x 34` 的测试终端中直接生成。
+### 大模型解读
+
+![月影神谕大模型解读界面](docs/interpretation-preview.png)
+
+### 继续追问
+
+![月影神谕继续追问界面](docs/follow-up-preview.png)
+
+预览来自当前 TUI 的实际运行界面，终端尺寸分别为 `115 x 34` 和 `117 x 38`。
 
 ## 运行
 
