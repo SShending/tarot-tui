@@ -1,6 +1,7 @@
 import unittest
 
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.geometry import Offset
 from textual.widgets import Button, Input, Markdown
 
 from tarot_tui.app import LunarArcanaApp
@@ -75,9 +76,89 @@ class AppSmokeTests(unittest.IsolatedAsyncioTestCase):
             cards = app.query_one("#cards", Horizontal)
 
             self.assertTrue(cards.has_class("narrow"))
-            self.assertEqual(25, cards.region.height)
+            self.assertEqual(cards.region.y, cards.children[0].region.y)
+            self.assertEqual(cards.region.bottom, cards.children[-1].region.bottom)
             for card in cards.children:
                 self.assertEqual(cards.content_region.width, card.region.width)
+            for previous, current in zip(cards.children, cards.children[1:]):
+                self.assertEqual(previous.region.bottom + 1, current.region.y)
+
+    async def test_report_follows_cards_without_nested_scrolling(self) -> None:
+        for size in ((115, 34), (80, 32), (70, 32)):
+            with self.subTest(size=size):
+                app = LunarArcanaApp(LocalInterpreter())
+                async with app.run_test(size=size) as pilot:
+                    await pilot.pause()
+                    app._start_reading("我该怎样推进当前计划？")
+                    await pilot.pause(0.9)
+                    for index in range(3):
+                        app._reveal_card(index)
+                    await pilot.pause()
+
+                    app.interpret_pressed()
+                    await pilot.pause(0.5)
+
+                    cards = list(app.query(".tarot-card"))
+                    actions = app.query_one("#actions", Horizontal)
+                    result = app.query_one("#result", Vertical)
+                    report = app.query_one("#report", Markdown)
+
+                    self.assertEqual(0, actions.region.height)
+                    self.assertEqual(
+                        max(card.region.bottom for card in cards) + 1,
+                        result.region.y,
+                    )
+                    self.assertGreater(app.screen.max_scroll_y, 0)
+                    self.assertEqual(0, result.max_scroll_y)
+                    self.assertTrue(app.screen.show_vertical_scrollbar)
+                    self.assertFalse(result.show_vertical_scrollbar)
+
+                    opening = (
+                        report.children[1]
+                        if len(report.children) > 1
+                        else report.children[0]
+                    )
+                    self.assertTrue(app.screen.can_view_entire(opening))
+
+    async def test_question_input_owns_cursor_and_keeps_layout_stable(self) -> None:
+        app = LunarArcanaApp(LocalInterpreter())
+        async with app.run_test(size=(80, 32)) as pilot:
+            await pilot.pause()
+            question = app.query_one("#question", Input)
+            question_region = question.region
+
+            self.assertTrue(question.has_focus)
+            app.cursor_position = Offset(0, 0)
+            app._focus_question_input()
+            self.assertEqual(Offset(0, 0), app.cursor_position)
+
+            await pilot.press("a", "中", "文")
+            await pilot.pause()
+            self.assertEqual("a中文", question.value)
+            self.assertEqual(question_region, question.region)
+            self.assertEqual(Offset(0, 0), app.screen.scroll_offset)
+            self.assertEqual(question.cursor_screen_offset, app.cursor_position)
+
+            question.value = ""
+            await pilot.press("enter")
+            await pilot.pause()
+            self.assertTrue(question.has_focus)
+            self.assertEqual(question_region, question.region)
+            self.assertEqual(Offset(0, 0), app.screen.scroll_offset)
+
+            question.value = "重新占卜后仍应聚焦"
+            await pilot.press("enter")
+            await pilot.pause(0.9)
+            app.action_new_reading()
+            await pilot.pause()
+
+            self.assertTrue(question.has_focus)
+            self.assertEqual(question_region, question.region)
+            self.assertEqual(Offset(0, 0), app.screen.scroll_offset)
+            await pilot.press("新")
+            await pilot.pause()
+            self.assertEqual("新", question.value)
+            self.assertEqual(question.cursor_screen_offset, app.cursor_position)
 
     async def test_model_reading_accepts_follow_up_and_clears_new_conversation(
         self,

@@ -103,7 +103,7 @@ class LunarArcanaApp(App[None]):
 
     #cards {
         width: 100%;
-        height: 12;
+        height: auto;
         align-horizontal: center;
     }
 
@@ -144,7 +144,7 @@ class LunarArcanaApp(App[None]):
 
     #actions {
         width: 100%;
-        height: 5;
+        height: auto;
         align-horizontal: center;
     }
 
@@ -228,7 +228,7 @@ class LunarArcanaApp(App[None]):
 
     #cards.narrow {
         layout: vertical;
-        height: 25;
+        height: auto;
     }
 
     #cards.narrow Button.tarot-card {
@@ -236,6 +236,10 @@ class LunarArcanaApp(App[None]):
         max-width: 100%;
         height: 7;
         margin: 0 0 1 0;
+    }
+
+    #cards.narrow Button.tarot-card:last-child {
+        margin-bottom: 0;
     }
     """
 
@@ -370,9 +374,7 @@ class LunarArcanaApp(App[None]):
         self.call_after_refresh(self._focus_question_input)
 
     def _focus_question_input(self) -> None:
-        question = self.query_one("#question", Input)
-        question.focus()
-        self.cursor_position = question.cursor_screen_offset
+        self.query_one("#question", Input).focus()
 
     def _start_reading(self, question: str) -> None:
         question = question.strip()
@@ -491,10 +493,13 @@ class LunarArcanaApp(App[None]):
             report = LocalInterpreter().interpret(self.reading)
         self.call_from_thread(self._display_report, report, used_fallback)
 
-    def _display_report(self, report: ReadingReport, used_fallback: bool) -> None:
+    async def _display_report(
+        self,
+        report: ReadingReport,
+        used_fallback: bool,
+    ) -> None:
         self._report_markdown = report.markdown
         self._follow_up_transcript.clear()
-        self._render_report()
         result = self.query_one("#result")
         result.remove_class("hidden")
         interpret = self.query_one("#interpret", Button)
@@ -515,11 +520,8 @@ class LunarArcanaApp(App[None]):
             self.query_one("#ritual-status", Static).update(
                 "解读完成 · 牌面描述趋势，不决定未来"
             )
-        if can_follow_up:
-            self.call_after_refresh(self._focus_follow_up_input)
-        else:
-            new_button.focus()
-        self.call_after_refresh(lambda: result.scroll_visible(animate=True))
+        await self._render_report()
+        self.call_after_refresh(self._settle_report_view, can_follow_up)
 
     def _start_follow_up(self, question: str) -> None:
         question = question.strip()
@@ -550,7 +552,7 @@ class LunarArcanaApp(App[None]):
             return
         self.call_from_thread(self._display_follow_up, session, question, report)
 
-    def _display_follow_up(
+    async def _display_follow_up(
         self,
         session: int,
         question: str,
@@ -559,7 +561,7 @@ class LunarArcanaApp(App[None]):
         if session != self._reading_session:
             return
         self._follow_up_transcript.append((question, report.markdown))
-        self._render_report()
+        await self._render_report()
         follow_up_input = self.query_one("#follow-up-question", Input)
         follow_up_input.value = ""
         self._restore_follow_up_controls()
@@ -591,7 +593,7 @@ class LunarArcanaApp(App[None]):
     def _focus_follow_up_input(self) -> None:
         self.query_one("#follow-up-question", Input).focus()
 
-    def _render_report(self) -> None:
+    async def _render_report(self) -> None:
         sections = [self._report_markdown]
         for question, answer in self._follow_up_transcript:
             quoted_question = "\n".join(
@@ -601,7 +603,20 @@ class LunarArcanaApp(App[None]):
                 f"---\n\n### 你的追问\n\n{quoted_question}\n\n"
                 f"### 解读回应\n\n{answer}"
             )
-        self.query_one("#report", Markdown).update("\n\n".join(sections))
+        await self.query_one("#report", Markdown).update("\n\n".join(sections))
+
+    def _settle_report_view(self, can_follow_up: bool) -> None:
+        report = self.query_one("#report", Markdown)
+        if report.children:
+            # Bring in the opening answer without jumping to the end of a long report.
+            anchor = report.children[1] if len(report.children) > 1 else report.children[0]
+            anchor.scroll_visible(animate=False, immediate=True)
+
+        follow_up_input = self.query_one("#follow-up-question", Input)
+        if can_follow_up and self.screen.can_view_entire(follow_up_input):
+            follow_up_input.focus(scroll_visible=False)
+        else:
+            self.query_one("#card-2", Button).focus(scroll_visible=False)
 
     def _set_card_layout(self, width: int) -> None:
         cards = self.query_one("#cards")
