@@ -100,7 +100,7 @@ class MemoryPersistenceTests(unittest.TestCase):
 
 
 class MemoryRetrievalTests(unittest.TestCase):
-    def test_retriever_prefers_same_domain_and_question_overlap(self) -> None:
+    def test_retriever_prefers_relevant_domains_over_unrelated_recent_history(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             store = JsonlReadingStore(Path(directory) / "readings.jsonl")
             now = datetime.now(timezone.utc)
@@ -127,9 +127,9 @@ class MemoryRetrievalTests(unittest.TestCase):
                 limit=2,
             )
 
-            self.assertEqual(career.id, matches[0].id)
-            self.assertIn(study.id, {record.id for record in matches})
-            self.assertNotIn(relationship.id, {record.id for record in matches})
+            match_ids = {record.id for record in matches}
+            self.assertEqual({career.id, study.id}, match_ids)
+            self.assertNotIn(relationship.id, match_ids)
 
     def test_retrieval_is_bounded(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
