@@ -59,6 +59,28 @@ class JournalSmokeTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual("partly_aligned", updated.reflection.state)  # type: ignore[union-attr]
                 self.assertIn("缩小了范围", updated.reflection.note)  # type: ignore[union-attr]
 
+    async def test_history_screen_handles_many_records(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = JsonlReadingStore(Path(directory) / "readings.jsonl")
+            for index in range(25):
+                store.append(
+                    new_record(
+                        draw_reading(f"历史问题 {index}", random.Random(100 + index)),
+                        f"历史解读 {index}",
+                    )
+                )
+            interpreter = MemoryInterpreter(LocalInterpreter(), store)
+            app = MemoryLunarArcanaApp(interpreter, store)
+
+            async with app.run_test(size=(90, 32)) as pilot:
+                await pilot.press("ctrl+h")
+                await pilot.pause()
+
+                history = app.screen
+                self.assertIsInstance(history, HistoryScreen)
+                history_list = history.query_one("#history-list", ListView)
+                self.assertEqual(25, len(history_list.children))
+
 
 if __name__ == "__main__":
     unittest.main()
