@@ -32,6 +32,19 @@ class MemoryPersistenceTests(unittest.TestCase):
         self.assertEqual(record, restored)
         self.assertEqual(reading.cards, restored.reading.cards)
 
+    def test_reading_survives_store_restart(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "readings.jsonl"
+            record = new_record(
+                draw_reading("重启后还记得吗？", random.Random(8)),
+                "会从本地重新读取。",
+            )
+            JsonlReadingStore(path).append(record)
+
+            restarted_store = JsonlReadingStore(path)
+
+            self.assertEqual(record, restarted_store.get(record.id))
+
     def test_jsonl_store_appends_lists_and_updates_reflection(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "readings.jsonl"
@@ -130,6 +143,20 @@ class MemoryRetrievalTests(unittest.TestCase):
             match_ids = {record.id for record in matches}
             self.assertEqual({career.id, study.id}, match_ids)
             self.assertNotIn(relationship.id, match_ids)
+
+    def test_recent_but_unrelated_history_is_not_retrieved(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = JsonlReadingStore(Path(directory) / "readings.jsonl")
+            store.append(
+                new_record(
+                    draw_reading("今天晚饭吃什么？", random.Random(41)),
+                    "无关历史",
+                )
+            )
+
+            matches = MemoryRetriever(store).retrieve("我最近要不要搬家？")
+
+            self.assertEqual([], matches)
 
     def test_retrieval_is_bounded(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
