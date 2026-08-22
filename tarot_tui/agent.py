@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import json
-from typing import Any
 
 from .domain import Reading
 from .interpretation import (
     Interpreter,
-    LocalInterpreter,
     OpenAIInterpreter,
     ReadingReport,
     _MODEL_INSTRUCTIONS,
@@ -78,6 +76,11 @@ class MemoryInterpreter:
             )
             self.last_memories = memories
             report = self._interpret_openai(reading, memories)
+            if memories and not report.blocked:
+                report = ReadingReport(
+                    report.markdown + _memory_reference_markdown(memories),
+                    blocked=False,
+                )
         else:
             report = self.interpreter.interpret(reading)
 
@@ -164,6 +167,14 @@ class MemoryInterpreter:
             updater(self._current_record_id, tuple(self._follow_ups))
         except Exception as error:
             self.last_memory_error = error
+
+
+def _memory_reference_markdown(memories: tuple[ReadingRecord, ...]) -> str:
+    lines = ["\n\n---\n\n### 本次参考的历史"]
+    for record in memories:
+        lines.append(f"- {record.created_at.date().isoformat()} · {record.question}")
+    lines.append("\n这些历史只作为上下文，不增加本次牌面的确定性。")
+    return "\n".join(lines)
 
 
 def memory_interpreter(
