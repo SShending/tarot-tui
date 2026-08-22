@@ -322,6 +322,7 @@ def compact_memory(record: ReadingRecord) -> dict[str, object]:
         "cards": [
             f"{drawn.card.name}（{drawn.orientation}）" for drawn in record.reading.cards
         ],
+        "past_interpretation_excerpt": record.interpretation[:500],
         "reflection": (
             {"state": record.reflection.state, "note": record.reflection.note[:300]}
             if record.reflection is not None
