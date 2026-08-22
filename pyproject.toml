@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lunar-arcana-tui"
-version = "0.2.0"
-description = "A focused 78-card tarot reading TUI."
+version = "0.3.0"
+description = "A local-first tarot TUI with persistent reading memory."
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.11"
 license = "MIT"
@@ -13,7 +13,7 @@ license-files = ["LICENSE"]
 dependencies = ["textual>=7.5,<8", "openai>=2,<3"]
 
 [project.scripts]
-lunar-arcana = "tarot_tui.app:main"
+lunar-arcana = "tarot_tui.runtime:main"
 
 [tool.setuptools.packages.find]
 include = ["tarot_tui*"]
