@@ -78,6 +78,40 @@ class MemoryInterpreterTests(unittest.TestCase):
         self.assertFalse(report.blocked)
         self.assertIsInstance(interpreter.last_memory_error, OSError)
 
+    def test_retrieval_failure_does_not_downgrade_ai_reading(self) -> None:
+        calls = []
+
+        class BrokenReadStore:
+            def append(self, record) -> None:
+                pass
+
+            def list(self):
+                raise OSError("cannot read memory")
+
+            def get(self, record_id):
+                return None
+
+            def replace(self, record) -> None:
+                pass
+
+        class FakeResponses:
+            def create(self, **kwargs):
+                calls.append(kwargs)
+                return SimpleNamespace(output_text="AI 仍然完成了解读")
+
+        base = OpenAIInterpreter(
+            client=SimpleNamespace(responses=FakeResponses()),
+            model="test-model",
+        )
+        interpreter = MemoryInterpreter(base, BrokenReadStore())
+        reading = draw_reading("即使历史损坏也继续解读", random.Random(14))
+
+        report = interpreter.interpret(reading)
+
+        self.assertEqual("AI 仍然完成了解读", report.markdown)
+        self.assertEqual(1, len(calls))
+        self.assertIsInstance(interpreter.last_memory_error, OSError)
+
     def test_openai_reading_receives_only_bounded_relevant_history(self) -> None:
         calls = []
 
@@ -115,11 +149,13 @@ class MemoryInterpreterTests(unittest.TestCase):
             self.assertIn("past_interpretation_excerpt", content)
             self.assertLessEqual(len(interpreter.last_memories), 3)
             self.assertNotIn("感情里要不要重新联系对方", content)
+            for drawn in current.cards:
+                self.assertIn(drawn.card.name, content)
             self.assertIn("本次参考的历史", report.markdown)
             for memory in interpreter.last_memories:
                 self.assertIn(memory.question, report.markdown)
 
-    def test_memory_can_be_disabled_without_deleting_history(self) -> None:
+    def test_memory_can_be_disabled_without_reading_or_writing_history(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             store = JsonlReadingStore(Path(directory) / "readings.jsonl")
             first = MemoryInterpreter(LocalInterpreter(), store)
@@ -127,9 +163,11 @@ class MemoryInterpreterTests(unittest.TestCase):
 
             interpreter = MemoryInterpreter(LocalInterpreter(), store)
             interpreter.set_memory_enabled(False)
-            interpreter.interpret(draw_reading("第二条历史", random.Random(51)))
+            interpreter.interpret(draw_reading("不应写入的第二条", random.Random(51)))
 
-            self.assertEqual(2, len(store.list()))
+            records = store.list()
+            self.assertEqual(1, len(records))
+            self.assertEqual("第一条历史", records[0].question)
             self.assertFalse(interpreter.memory_enabled)
 
 
