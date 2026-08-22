@@ -57,7 +57,7 @@ class MemoryInterpreter:
 
     @property
     def label(self) -> str:
-        suffix = " · memory" if self.memory_enabled else ""
+        suffix = " · memory" if self.memory_enabled else " · memory off"
         return f"{self.interpreter.label}{suffix}"
 
     @property
@@ -71,9 +71,18 @@ class MemoryInterpreter:
         self.last_memory_error = None
 
         if self.memory_enabled and isinstance(self.interpreter, OpenAIInterpreter):
-            memories = tuple(
-                self.retriever.retrieve(reading.question, current_reading=reading, limit=3)
-            )
+            try:
+                memories = tuple(
+                    self.retriever.retrieve(
+                        reading.question,
+                        current_reading=reading,
+                        limit=3,
+                    )
+                )
+            except Exception as error:
+                # Retrieval is optional context. The AI reading should still run.
+                self.last_memory_error = error
+                memories = ()
             self.last_memories = memories
             report = self._interpret_openai(reading, memories)
             if memories and not report.blocked:
@@ -84,7 +93,7 @@ class MemoryInterpreter:
         else:
             report = self.interpreter.interpret(reading)
 
-        if not report.blocked:
+        if self.memory_enabled and not report.blocked:
             self._persist_new_record(reading, report.markdown)
         return report
 
