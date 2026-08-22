@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from tarot_tui.agent import MemoryInterpreter
 from tarot_tui.domain import draw_reading
 from tarot_tui.interpretation import LocalInterpreter, OpenAIInterpreter, ReadingReport
-from tarot_tui.memory import JsonlReadingStore, Reflection
+from tarot_tui.memory import JsonlReadingStore
 
 
 class FakeConversationalInterpreter:
@@ -108,12 +108,16 @@ class MemoryInterpreterTests(unittest.TestCase):
             interpreter = MemoryInterpreter(base, store)
             current = draw_reading("我应该接受这个实习还是继续做研究？", random.Random(40))
 
-            interpreter.interpret(current)
+            report = interpreter.interpret(current)
 
             content = calls[0]["input"][0]["content"]
             self.assertIn("relevant_history", content)
+            self.assertIn("past_interpretation_excerpt", content)
             self.assertLessEqual(len(interpreter.last_memories), 3)
             self.assertNotIn("感情里要不要重新联系对方", content)
+            self.assertIn("本次参考的历史", report.markdown)
+            for memory in interpreter.last_memories:
+                self.assertIn(memory.question, report.markdown)
 
     def test_memory_can_be_disabled_without_deleting_history(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
