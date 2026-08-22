@@ -43,7 +43,7 @@ class JournalSmokeTests(unittest.IsolatedAsyncioTestCase):
 
                 history = app.screen
                 self.assertIsInstance(history, HistoryScreen)
-                self.assertEqual(1, len(history.query("#history-list", ListView)))
+                history.query_one("#history-list", ListView)
 
                 await pilot.press("enter")
                 await pilot.pause()
