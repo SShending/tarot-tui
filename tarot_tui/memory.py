@@ -195,13 +195,14 @@ class MemoryRetriever:
             repeated_cards = len(
                 current_cards & {drawn.card.name for drawn in record.reading.cards}
             )
+            relevance = overlap * 2.0 + domains * 4.0 + repeated_cards * 1.5
+            if relevance <= 0:
+                continue
+
             age_days = max((now - _as_utc(record.created_at)).total_seconds() / 86400, 0)
             recency = max(0.0, 1.0 - min(age_days, 365.0) / 365.0)
-
-            score = overlap * 2.0 + domains * 4.0 + repeated_cards * 1.5 + recency
-            if score <= 0:
-                continue
-            ranked.append((score, record.created_at, record.id, record))
+            score = relevance + recency
+            ranked.append((score, _as_utc(record.created_at), record.id, record))
 
         ranked.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)
         return [item[3] for item in ranked[:limit]]
@@ -223,7 +224,7 @@ def new_record(
 ) -> ReadingRecord:
     return ReadingRecord(
         id=uuid4().hex,
-        created_at=created_at or datetime.now(timezone.utc),
+        created_at=_as_utc(created_at or datetime.now(timezone.utc)),
         reading=reading,
         interpretation=interpretation,
         follow_ups=follow_ups,
@@ -298,7 +299,9 @@ def record_from_dict(payload: object) -> ReadingRecord:
             note=str(reflection_payload.get("note", "")),
         )
 
-    created_at = datetime.fromisoformat(str(payload["created_at"]).replace("Z", "+00:00"))
+    created_at = _as_utc(
+        datetime.fromisoformat(str(payload["created_at"]).replace("Z", "+00:00"))
+    )
     reading = Reading(
         question=str(payload["question"]).strip(),
         cards=tuple(cards),  # type: ignore[arg-type]
