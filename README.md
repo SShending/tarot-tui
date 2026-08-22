@@ -94,6 +94,20 @@ python -m unittest discover -s tests -v
 
 本工具用于象征性反思，不提供医疗、法律、财务或危机判断，也不把牌面描述为确定未来。
 
+## Roadmap
+
+### v0.3 — Memory Agent
+
+下一版本的目标是把一次性牌局扩展为一个本地优先、能够跨牌局记住用户旅程的 Tarot Agent：
+
+- 持久化 Reading History（episodic memory）
+- 为历史牌局补充 reflection / outcome
+- 在新问题中检索少量相关历史，而不是重放全部记录
+- 让大模型进行跨牌局比较，同时区分用户事实、历史解读与当前牌面
+- 保持无后端、无向量数据库、无 Agent 框架的轻量实现
+
+完整开发规格与验收标准见 [`docs/v0.3-memory-agent.md`](docs/v0.3-memory-agent.md)。
+
 ## 许可证
 
 本项目采用 [MIT License](LICENSE) 开源。
